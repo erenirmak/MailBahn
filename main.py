@@ -12,7 +12,8 @@ from pathlib import Path
 
 import webview
 
-from mailer import decode_bytes, detect_duplicates, get_attachments, load_cc, load_recipients, preview_csv, send_emails
+from csvutils import confirm_cc_csv, confirm_recipient_csv, load_cc_csv, load_recipient_csv, preview_csv
+from mailer import decode_bytes, get_attachments, send_emails
 import db
 
 
@@ -103,57 +104,39 @@ class Api:
 
     def confirm_csv(self, path, name_col, email_col):
         """Load recipients with the chosen column mapping, detect duplicates."""
-        dupes = detect_duplicates(Path(path), email_col)
-        self.recipients = load_recipients(Path(path), name_col, email_col)
-        if not self.recipients:
-            return {"ok": False, "error": "No recipients found with those columns."}
+        recipients, result = confirm_recipient_csv(path, name_col, email_col)
+        if not result.get("ok"):
+            return result
+        self.recipients = recipients
         self._last_csv_path = path
-        names = [r["name"] or r["email"] for r in self.recipients[:5]]
-        preview = ", ".join(names)
-        if len(self.recipients) > 5:
-            preview += f" +{len(self.recipients) - 5} more"
-        result = {"ok": True, "count": len(self.recipients), "preview": preview}
-        if dupes:
-            result["duplicates"] = dupes
         return result
 
     def load_csv_file(self, path):
-        self.recipients = load_recipients(Path(path))
-        if not self.recipients:
-            return {"ok": False, "error": "No recipients found."}
+        recipients, result = load_recipient_csv(path)
+        if not result.get("ok"):
+            return result
+        self.recipients = recipients
         self._last_csv_path = path
-        names = [r["name"] or r["email"] for r in self.recipients[:5]]
-        preview = ", ".join(names)
-        if len(self.recipients) > 5:
-            preview += f" +{len(self.recipients) - 5} more"
-        return {"ok": True, "count": len(self.recipients), "preview": preview}
+        return result
 
     def load_cc_file(self, path):
-        self.cc_list = load_cc(Path(path))
-        if not self.cc_list:
-            return {"ok": False, "error": "No CC addresses found."}
+        cc_list, result = load_cc_csv(path)
+        if not result.get("ok"):
+            return result
+        self.cc_list = cc_list
         self._last_cc_path = path
-        preview = ", ".join(self.cc_list[:5])
-        if len(self.cc_list) > 5:
-            preview += f" +{len(self.cc_list) - 5} more"
-        return {"ok": True, "count": len(self.cc_list), "preview": preview}
+        return result
 
     def preview_cc_file(self, path):
         return preview_csv(Path(path))
 
     def confirm_cc(self, path, email_col):
         """Load CC with the chosen email column, detect duplicates."""
-        dupes = detect_duplicates(Path(path), email_col)
-        self.cc_list = load_cc(Path(path), email_col)
-        if not self.cc_list:
-            return {"ok": False, "error": "No CC addresses found with that column."}
+        cc_list, result = confirm_cc_csv(path, email_col)
+        if not result.get("ok"):
+            return result
+        self.cc_list = cc_list
         self._last_cc_path = path
-        preview = ", ".join(self.cc_list[:5])
-        if len(self.cc_list) > 5:
-            preview += f" +{len(self.cc_list) - 5} more"
-        result = {"ok": True, "count": len(self.cc_list), "preview": preview}
-        if dupes:
-            result["duplicates"] = dupes
         return result
 
     # ── Message Editing ───────────────────────────────────────────
