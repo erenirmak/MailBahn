@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# App data / secrets
+.env
+config.json
+*.db
+
+# Build artifacts
+*.spec
+dist.zip
+
+# testing files
+test_folder/
+test_files/
+templates/
+

@@ -1,0 +1,15 @@
+[project]
+name = "auto-mail"
+version = "1.0.0"
+description = "Desktop app for sending personalized HTML emails to multiple recipients"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "keyring>=25.7.0",
+    "pywebview>=6.2",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.19.0",
+]
