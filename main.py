@@ -12,7 +12,7 @@ from pathlib import Path
 
 import webview
 
-from mailer import decode_bytes, get_attachments, load_cc, load_recipients, send_emails
+from mailer import decode_bytes, detect_duplicates, get_attachments, load_cc, load_recipients, preview_csv, send_emails
 import db
 
 
@@ -95,6 +95,24 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     # ── Loaders ───────────────────────────────────────────────────
+
+    def preview_csv_file(self, path):
+        return preview_csv(Path(path))
+
+    def confirm_csv(self, path, name_col, email_col):
+        """Load recipients with the chosen column mapping, detect duplicates."""
+        dupes = detect_duplicates(Path(path), email_col)
+        self.recipients = load_recipients(Path(path), name_col, email_col)
+        if not self.recipients:
+            return {"ok": False, "error": "No recipients found with those columns."}
+        names = [r["name"] or r["email"] for r in self.recipients[:5]]
+        preview = ", ".join(names)
+        if len(self.recipients) > 5:
+            preview += f" +{len(self.recipients) - 5} more"
+        result = {"ok": True, "count": len(self.recipients), "preview": preview}
+        if dupes:
+            result["duplicates"] = dupes
+        return result
 
     def load_csv_file(self, path):
         self.recipients = load_recipients(Path(path))
@@ -395,6 +413,38 @@ input::placeholder { color: var(--muted); }
     display: flex; gap: 8px; padding: 12px 20px 16px; justify-content: flex-end;
     border-top: 1px solid var(--border); margin-top: 4px;
 }
+/* ── CSV Preview Modal ────────────────────────────────────── */
+.modal.csv-modal { width: 620px; }
+.csv-table-wrap {
+    max-height: 220px; overflow: auto; border-radius: 6px;
+    border: 1px solid var(--border); margin: 10px 0;
+}
+.csv-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.csv-table th {
+    background: var(--input); color: var(--dim); padding: 6px 10px;
+    text-align: left; font-weight: 600; position: sticky; top: 0;
+    border-bottom: 1px solid var(--border);
+}
+.csv-table td {
+    padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,.04);
+    color: var(--text); white-space: nowrap; max-width: 200px;
+    overflow: hidden; text-overflow: ellipsis;
+}
+.csv-table tr:hover td { background: rgba(74,158,255,.06); }
+.csv-mapping { display: flex; gap: 16px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+.csv-mapping label { font-size: 12px; color: var(--dim); }
+.csv-mapping select {
+    background: var(--input); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 5px 8px; font-size: 12px; font-family: inherit; outline: none;
+}
+.csv-mapping select:focus { border-color: var(--focus); }
+.csv-warn {
+    background: rgba(232,168,56,.1); border: 1px solid var(--warn); border-radius: 6px;
+    padding: 8px 12px; font-size: 11px; color: var(--warn); margin: 8px 0; line-height: 1.5;
+}
+.csv-total { font-size: 11px; color: var(--dim); }
 .info-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .info-row .info-label { font-size: 11px; color: var(--muted); min-width: 80px; }
 .info-row .info-value { font-size: 11px; color: var(--dim); word-break: break-all; }
@@ -502,6 +552,34 @@ input::placeholder { color: var(--muted); }
         <div class="modal-footer">
             <button class="btn" onclick="closeSettings()">Cancel</button>
             <button class="btn btn-green" onclick="saveSettings()">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- CSV Preview Modal -->
+<div class="modal-bg" id="csvModal">
+    <div class="modal csv-modal">
+        <div class="modal-header"><span>&#128196;</span> CSV Preview</div>
+        <div style="padding:12px 20px 0;">
+            <div class="csv-total" id="csvTotal"></div>
+            <div class="csv-table-wrap">
+                <table class="csv-table" id="csvTable"><tbody></tbody></table>
+            </div>
+            <div class="csv-mapping">
+                <div>
+                    <label>Name column:</label>
+                    <select id="csvNameCol"></select>
+                </div>
+                <div>
+                    <label>Email column:</label>
+                    <select id="csvEmailCol"></select>
+                </div>
+            </div>
+            <div id="csvDupeWarn"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeCsvModal()">Cancel</button>
+            <button class="btn btn-green" onclick="confirmCsv()">Confirm</button>
         </div>
     </div>
 </div>
@@ -678,7 +756,8 @@ function applySettings(s) {
     if (s.EMAIL_DELAY) $('cfgDelay').value = s.EMAIL_DELAY;
 }
 
-/* ── Recipients ───────────────────────────────────────────── */
+/* ── Recipients & CSV Preview ─────────────────────────────── */
+let _csvPath = '';
 async function browseCsv() {
     const p = await pywebview.api.browse_csv();
     if (p) $('csvPath').value = p;
@@ -686,7 +765,67 @@ async function browseCsv() {
 async function loadCsv() {
     const p = $('csvPath').value.trim();
     if (!p) return setStatus('csvStatus', 'Enter a path first.', 'warn');
-    applyCsv(await pywebview.api.load_csv_file(p));
+    _csvPath = p;
+    const r = await pywebview.api.preview_csv_file(p);
+    if (!r.ok) return setStatus('csvStatus', r.error, 'warn');
+    showCsvModal(r);
+}
+function showCsvModal(data) {
+    const headers = data.headers;
+    const rows = data.rows;
+    // Build table
+    let html = '<thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>';
+    rows.forEach(row => {
+        html += '<tr>' + headers.map(h => '<td>' + (row[h] || '') + '</td>').join('') + '</tr>';
+    });
+    html += '</tbody>';
+    $('csvTable').innerHTML = html;
+    $('csvTotal').textContent = data.total + ' row' + (data.total !== 1 ? 's' : '') + ' total' +
+        (data.rows.length < data.total ? ' (showing first ' + data.rows.length + ')' : '');
+    // Populate dropdowns
+    function fillSelect(id, guess) {
+        const sel = $(id);
+        sel.innerHTML = '<option value="">(none)</option>';
+        headers.forEach(h => {
+            const opt = document.createElement('option');
+            opt.value = h; opt.textContent = h;
+            if (h.toLowerCase() === guess) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+    fillSelect('csvNameCol', 'name');
+    fillSelect('csvEmailCol', 'email');
+    $('csvDupeWarn').innerHTML = '';
+    $('csvModal').classList.add('open');
+}
+function closeCsvModal() {
+    $('csvModal').classList.remove('open');
+}
+$('csvModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCsvModal();
+});
+async function confirmCsv() {
+    const nameCol = $('csvNameCol').value;
+    const emailCol = $('csvEmailCol').value;
+    if (!emailCol) {
+        $('csvDupeWarn').innerHTML = '<div class="csv-warn">Select an email column.</div>';
+        return;
+    }
+    const r = await pywebview.api.confirm_csv(_csvPath, nameCol, emailCol);
+    if (!r.ok) {
+        $('csvDupeWarn').innerHTML = '<div class="csv-warn">' + r.error + '</div>';
+        return;
+    }
+    let warn = '';
+    if (r.duplicates && r.duplicates.length > 0) {
+        warn = '\\u26a0 Duplicates: ' + r.duplicates.join(', ');
+        $('csvDupeWarn').innerHTML = '<div class="csv-warn">' + warn + '</div>';
+        // Still load, but warn — user can cancel or proceed
+    }
+    closeCsvModal();
+    setStatus('csvStatus', r.count + ' loaded \\u2014 ' + r.preview +
+        (r.duplicates && r.duplicates.length ? ' (\\u26a0 ' + r.duplicates.length + ' duplicate' +
+        (r.duplicates.length > 1 ? 's' : '') + ')' : ''), r.duplicates && r.duplicates.length ? 'warn' : 'ok');
 }
 function applyCsv(r) {
     if (!r.ok) return setStatus('csvStatus', r.error, 'warn');
