@@ -110,8 +110,8 @@ def detect_duplicates(filepath: Path, email_col: str = "email") -> list[str]:
     return [addr for addr, count in seen.items() if count > 1]
 
 
-def load_cc(filepath: Path) -> list[str]:
-    """Load CC addresses from a CSV with an 'email' column."""
+def load_cc(filepath: Path, email_col: str = "email") -> list[str]:
+    """Load CC addresses from a CSV with a configurable email column."""
     if not filepath.is_file():
         return []
     raw = filepath.read_bytes()
@@ -119,7 +119,7 @@ def load_cc(filepath: Path) -> list[str]:
     cc = []
     reader = csv.DictReader(text.splitlines(), skipinitialspace=True)
     for row in reader:
-        email = row.get("email", "").strip()
+        email = row.get(email_col, "").strip()
         if email:
             cc.append(email)
     return cc

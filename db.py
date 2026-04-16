@@ -37,6 +37,22 @@ def _connect() -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)"
     )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS template_meta ("
+        "  name TEXT PRIMARY KEY,"
+        "  subject TEXT DEFAULT '',"
+        "  attachment_dir TEXT DEFAULT '',"
+        "  cc_file TEXT DEFAULT '',"
+        "  last_sent_at TEXT DEFAULT '',"
+        "  last_sent_count INTEGER DEFAULT 0,"
+        "  last_sent_recipients TEXT DEFAULT ''"
+        ")"
+    )
+    # Migrate: add cc_file column if upgrading from older schema
+    try:
+        conn.execute("ALTER TABLE template_meta ADD COLUMN cc_file TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     return conn
 
@@ -98,6 +114,57 @@ def get_templates_dir() -> Path:
 
 def get_db_location() -> str:
     return str(_db_path())
+
+
+# ── Template metadata ─────────────────────────────────────────────
+
+def get_template_meta(name: str) -> dict:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT subject, attachment_dir, cc_file, last_sent_at, last_sent_count, last_sent_recipients "
+        "FROM template_meta WHERE name = ?", (name,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"subject": "", "attachment_dir": "", "cc_file": "",
+                "last_sent_at": "", "last_sent_count": 0, "last_sent_recipients": ""}
+    return {"subject": row[0], "attachment_dir": row[1], "cc_file": row[2],
+            "last_sent_at": row[3], "last_sent_count": row[4], "last_sent_recipients": row[5]}
+
+
+def save_template_meta(name: str, **fields) -> None:
+    conn = _connect()
+    existing = conn.execute(
+        "SELECT name FROM template_meta WHERE name = ?", (name,)
+    ).fetchone()
+    if existing:
+        parts = []
+        vals = []
+        for k, v in fields.items():
+            parts.append(f"{k} = ?")
+            vals.append(v)
+        if parts:
+            vals.append(name)
+            conn.execute(f"UPDATE template_meta SET {', '.join(parts)} WHERE name = ?", vals)
+    else:
+        cols = {"name": name, "subject": "", "attachment_dir": "", "cc_file": "",
+                "last_sent_at": "", "last_sent_count": 0, "last_sent_recipients": ""}
+        cols.update(fields)
+        conn.execute(
+            "INSERT INTO template_meta (name, subject, attachment_dir, cc_file, "
+            "last_sent_at, last_sent_count, last_sent_recipients) "
+            "VALUES (:name, :subject, :attachment_dir, :cc_file, "
+            ":last_sent_at, :last_sent_count, :last_sent_recipients)", cols
+        )
+    conn.commit()
+    conn.close()
+
+
+def delete_template_meta(name: str) -> None:
+    conn = _connect()
+    conn.execute("DELETE FROM template_meta WHERE name = ?", (name,))
+    conn.commit()
+    conn.close()
 
 
 # ── Secure credential storage (OS keyring) ────────────────────────

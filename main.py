@@ -24,6 +24,8 @@ class Api:
         self.recipients: list[dict[str, str]] = []
         self.cc_list: list[str] = []
         self.image_paths: dict[str, Path] = {}
+        self._last_csv_path: str = ""
+        self._last_cc_path: str = ""
         self.window = None
 
     # ── File Dialogs ──────────────────────────────────────────────
@@ -105,6 +107,7 @@ class Api:
         self.recipients = load_recipients(Path(path), name_col, email_col)
         if not self.recipients:
             return {"ok": False, "error": "No recipients found with those columns."}
+        self._last_csv_path = path
         names = [r["name"] or r["email"] for r in self.recipients[:5]]
         preview = ", ".join(names)
         if len(self.recipients) > 5:
@@ -118,6 +121,7 @@ class Api:
         self.recipients = load_recipients(Path(path))
         if not self.recipients:
             return {"ok": False, "error": "No recipients found."}
+        self._last_csv_path = path
         names = [r["name"] or r["email"] for r in self.recipients[:5]]
         preview = ", ".join(names)
         if len(self.recipients) > 5:
@@ -128,10 +132,29 @@ class Api:
         self.cc_list = load_cc(Path(path))
         if not self.cc_list:
             return {"ok": False, "error": "No CC addresses found."}
+        self._last_cc_path = path
         preview = ", ".join(self.cc_list[:5])
         if len(self.cc_list) > 5:
             preview += f" +{len(self.cc_list) - 5} more"
         return {"ok": True, "count": len(self.cc_list), "preview": preview}
+
+    def preview_cc_file(self, path):
+        return preview_csv(Path(path))
+
+    def confirm_cc(self, path, email_col):
+        """Load CC with the chosen email column, detect duplicates."""
+        dupes = detect_duplicates(Path(path), email_col)
+        self.cc_list = load_cc(Path(path), email_col)
+        if not self.cc_list:
+            return {"ok": False, "error": "No CC addresses found with that column."}
+        self._last_cc_path = path
+        preview = ", ".join(self.cc_list[:5])
+        if len(self.cc_list) > 5:
+            preview += f" +{len(self.cc_list) - 5} more"
+        result = {"ok": True, "count": len(self.cc_list), "preview": preview}
+        if dupes:
+            result["duplicates"] = dupes
+        return result
 
     # ── Message Editing ───────────────────────────────────────────
 
@@ -179,7 +202,7 @@ class Api:
 
     # ── Sending ───────────────────────────────────────────────────
 
-    def do_send(self, subject, html_content, used_cids, attach_path):
+    def do_send(self, subject, html_content, used_cids, attach_path, template_name):
         if not self.env_config:
             return {"ok": False, "error": "Open Settings (\u2699) and configure SMTP first."}
         srv = self.env_config.get("SMTP_SERVER", "")
@@ -213,6 +236,9 @@ class Api:
         except ValueError:
             delay = 2.0
 
+        csv_path = self._last_csv_path or ""
+        tpl_name = template_name or ""
+
         def progress(cur, tot, msg):
             self.window.evaluate_js(f"onProgress({cur},{tot},{json.dumps(msg)})")
 
@@ -223,6 +249,14 @@ class Api:
                     html_tpl, inline, att, delay, progress,
                     cc=cc,
                 )
+                if tpl_name:
+                    from datetime import datetime, timezone
+                    db.save_template_meta(
+                        tpl_name,
+                        last_sent_at=datetime.now(timezone.utc).isoformat(),
+                        last_sent_count=total,
+                        last_sent_recipients=csv_path,
+                    )
             except Exception as e:
                 self.window.evaluate_js(f"onProgress(0,0,{json.dumps(f'[ERROR] {e}')})")
             finally:
@@ -237,7 +271,7 @@ class Api:
         d = db.get_templates_dir()
         return sorted(p.stem for p in d.glob("*.html"))
 
-    def save_template(self, name, html_content):
+    def save_template(self, name, subject, html_content, attachment_dir, cc_file):
         if not name or not name.strip():
             return {"ok": False, "error": "Enter a template name."}
         safe = "".join(c for c in name.strip() if c.isalnum() or c in " _-").strip()
@@ -245,18 +279,24 @@ class Api:
             return {"ok": False, "error": "Invalid template name."}
         d = db.get_templates_dir()
         (d / f"{safe}.html").write_text(html_content, encoding="utf-8")
+        db.save_template_meta(safe, subject=subject or "",
+                              attachment_dir=attachment_dir or "",
+                              cc_file=cc_file or "")
         return {"ok": True, "name": safe}
 
     def load_template(self, name):
         p = db.get_templates_dir() / f"{name}.html"
         if not p.is_file():
             return {"ok": False, "error": "Template not found."}
-        return {"ok": True, "html": p.read_text(encoding="utf-8")}
+        html = p.read_text(encoding="utf-8")
+        meta = db.get_template_meta(name)
+        return {"ok": True, "html": html, **meta}
 
     def delete_template(self, name):
         p = db.get_templates_dir() / f"{name}.html"
         if p.is_file():
             p.unlink()
+        db.delete_template_meta(name)
         return {"ok": True}
 
     def get_templates_dir(self):
@@ -605,11 +645,35 @@ input::placeholder { color: var(--muted); }
     </div>
     <div class="row">
         <label>CC (CSV):</label>
-        <input type="text" id="ccPath" placeholder="Path to cc.csv (optional, needs 'email' column)">
+        <input type="text" id="ccPath" placeholder="Path to cc.csv (optional)">
         <button class="btn" onclick="browseCc()">Browse</button>
         <button class="btn btn-green" onclick="loadCc()">Load</button>
     </div>
     <div class="status" id="ccStatus"></div>
+
+<!-- CC Preview Modal -->
+<div class="modal-bg" id="ccModal">
+    <div class="modal csv-modal">
+        <div class="modal-header"><span>&#128196;</span> CC CSV Preview</div>
+        <div style="padding:12px 20px 0;">
+            <div class="csv-total" id="ccTotal"></div>
+            <div class="csv-table-wrap">
+                <table class="csv-table" id="ccTable"><tbody></tbody></table>
+            </div>
+            <div class="csv-mapping">
+                <div>
+                    <label>Email column:</label>
+                    <select id="ccEmailCol"></select>
+                </div>
+            </div>
+            <div id="ccDupeWarn"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeCcModal()">Cancel</button>
+            <button class="btn btn-green" onclick="confirmCc()">Confirm</button>
+        </div>
+    </div>
+</div>
     <div class="toolbar">
         <span style="font-size:12px;color:var(--dim)">Message:</span>
         <button class="btn btn-sm" onclick="loadFile()">Load File</button>
@@ -832,7 +896,8 @@ function applyCsv(r) {
     setStatus('csvStatus', r.count + ' loaded \\u2014 ' + r.preview, 'ok');
 }
 
-/* ── CC ───────────────────────────────────────────────────── */
+/* ── CC & CC Preview ──────────────────────────────────────── */
+let _ccPath = '';
 async function browseCc() {
     const p = await pywebview.api.browse_cc_csv();
     if (p) $('ccPath').value = p;
@@ -840,7 +905,57 @@ async function browseCc() {
 async function loadCc() {
     const p = $('ccPath').value.trim();
     if (!p) return setStatus('ccStatus', 'Enter a path first.', 'warn');
-    applyCc(await pywebview.api.load_cc_file(p));
+    _ccPath = p;
+    const r = await pywebview.api.preview_cc_file(p);
+    if (!r.ok) return setStatus('ccStatus', r.error, 'warn');
+    showCcModal(r);
+}
+function showCcModal(data) {
+    const headers = data.headers;
+    const rows = data.rows;
+    let html = '<thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>';
+    rows.forEach(row => {
+        html += '<tr>' + headers.map(h => '<td>' + (row[h] || '') + '</td>').join('') + '</tr>';
+    });
+    html += '</tbody>';
+    $('ccTable').innerHTML = html;
+    $('ccTotal').textContent = data.total + ' row' + (data.total !== 1 ? 's' : '') + ' total' +
+        (data.rows.length < data.total ? ' (showing first ' + data.rows.length + ')' : '');
+    const sel = $('ccEmailCol');
+    sel.innerHTML = '<option value="">(none)</option>';
+    headers.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h; opt.textContent = h;
+        if (h.toLowerCase() === 'email') opt.selected = true;
+        sel.appendChild(opt);
+    });
+    $('ccDupeWarn').innerHTML = '';
+    $('ccModal').classList.add('open');
+}
+function closeCcModal() {
+    $('ccModal').classList.remove('open');
+}
+$('ccModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCcModal();
+});
+async function confirmCc() {
+    const emailCol = $('ccEmailCol').value;
+    if (!emailCol) {
+        $('ccDupeWarn').innerHTML = '<div class="csv-warn">Select an email column.</div>';
+        return;
+    }
+    const r = await pywebview.api.confirm_cc(_ccPath, emailCol);
+    if (!r.ok) {
+        $('ccDupeWarn').innerHTML = '<div class="csv-warn">' + r.error + '</div>';
+        return;
+    }
+    if (r.duplicates && r.duplicates.length > 0) {
+        $('ccDupeWarn').innerHTML = '<div class="csv-warn">\\u26a0 Duplicates: ' + r.duplicates.join(', ') + '</div>';
+    }
+    closeCcModal();
+    setStatus('ccStatus', r.count + ' loaded \\u2014 ' + r.preview +
+        (r.duplicates && r.duplicates.length ? ' (\\u26a0 ' + r.duplicates.length + ' duplicate' +
+        (r.duplicates.length > 1 ? 's' : '') + ')' : ''), r.duplicates && r.duplicates.length ? 'warn' : 'ok');
 }
 function applyCc(r) {
     if (!r.ok) return setStatus('ccStatus', r.error, 'warn');
@@ -903,7 +1018,7 @@ async function doSend() {
     clearLog();
     btn.disabled = true;
     btn.textContent = 'Sending...';
-    const r = await pywebview.api.do_send(subject, html, cids, attachPath);
+    const r = await pywebview.api.do_send(subject, html, cids, attachPath, $('tplSelect').value);
     if (!r.ok) {
         addLog('[ERROR] ' + r.error);
         btn.disabled = false;
@@ -937,8 +1052,11 @@ async function refreshTemplates() {
 async function saveTemplate() {
     const name = prompt('Template name:');
     if (!name) return;
+    const subject = $('subject').value;
     const html = $('editor').innerHTML;
-    const r = await pywebview.api.save_template(name, html);
+    const attachDir = $('attachPath').value;
+    const ccFile = $('ccPath').value;
+    const r = await pywebview.api.save_template(name, subject, html, attachDir, ccFile);
     if (r.ok) {
         await refreshTemplates();
         $('tplSelect').value = r.name;
@@ -949,8 +1067,12 @@ async function loadTemplate() {
     const name = $('tplSelect').value;
     if (!name) return;
     const r = await pywebview.api.load_template(name);
-    if (r.ok) $('editor').innerHTML = r.html;
-    else addLog('[ERROR] ' + r.error);
+    if (r.ok) {
+        $('editor').innerHTML = r.html;
+        if (r.subject) $('subject').value = r.subject;
+        if (r.attachment_dir) $('attachPath').value = r.attachment_dir;
+        if (r.cc_file) $('ccPath').value = r.cc_file;
+    } else addLog('[ERROR] ' + r.error);
 }
 async function deleteTemplate() {
     const name = $('tplSelect').value;
