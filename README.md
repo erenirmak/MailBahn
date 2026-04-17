@@ -96,7 +96,7 @@ To build a standalone `.exe` file for distribution:
 2. Run the following command:
 
    ```bash
-   pyinstaller --onefile --name auto-mail main.py
+   pyinstaller --onefile --noconsole --name MailBahn main.py
    ```
 
 The executable will be created in the `dist` folder.
