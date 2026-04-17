@@ -494,7 +494,7 @@ input::placeholder { color: var(--muted); }
 
 <!-- Top bar with settings gear -->
 <div class="top-bar">
-    <span class="app-title">Auto-Mail</span>
+    <span class="app-title">MailBahn</span>
     <span class="spacer"></span>
     <span class="settings-status not-configured" id="settingsStatus">Not configured</span>
     <button class="gear-btn" onclick="openSettings()" title="Settings">&#9881;</button>
@@ -542,7 +542,7 @@ input::placeholder { color: var(--muted); }
             <div class="field">
                 <label>Templates Directory</label>
                 <div class="field-row">
-                    <input type="text" id="cfgTemplatesDir" placeholder="Default: %APPDATA%/auto-mail/templates">
+                    <input type="text" id="cfgTemplatesDir" placeholder="Default: %APPDATA%/MailBahn/templates">
                     <button class="btn btn-sm" onclick="browseTemplatesDir()">Browse</button>
                 </div>
                 <div class="hint">Where your .html email templates are stored</div>
@@ -557,7 +557,7 @@ input::placeholder { color: var(--muted); }
         <div class="tab-panel" id="tab-about">
             <div class="info-row">
                 <span class="info-label">App</span>
-                <span class="info-value">Auto-Mail v1.0</span>
+                <span class="info-value">MailBahn v1.0</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Data Location</span>
@@ -1092,7 +1092,7 @@ if __name__ == "__main__":
     logging.getLogger("pywebview").setLevel(logging.CRITICAL)
     api = Api()
     window = webview.create_window(
-        "Auto-Mail", html=HTML, js_api=api,
+        "MailBahn", html=HTML, js_api=api,
         width=860, height=750, min_size=(720, 600),
     )
     api.window = window

@@ -1,4 +1,4 @@
-"""Auto-Mail — SQLite registry for settings and paths."""
+"""MailBahn — SQLite registry for settings and paths."""
 
 import os
 import sqlite3
@@ -7,15 +7,15 @@ from pathlib import Path
 
 import keyring
 
-_KEYRING_SERVICE = "auto-mail"
+_KEYRING_SERVICE = "mailbahn"
 
 
 def _app_data_dir() -> Path:
     """Return the platform-appropriate app data directory, creating it if needed.
 
-    Windows:  %APPDATA%/auto-mail
-    macOS:    ~/Library/Application Support/auto-mail
-    Linux:    $XDG_DATA_HOME/auto-mail  (defaults to ~/.local/share/auto-mail)
+    Windows:  %APPDATA%/MailBahn
+    macOS:    ~/Library/Application Support/MailBahn
+    Linux:    $XDG_DATA_HOME/MailBahn  (defaults to ~/.local/share/MailBahn)
     """
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
@@ -23,13 +23,13 @@ def _app_data_dir() -> Path:
         base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    d = base / "auto-mail"
+    d = base / "MailBahn"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def _db_path() -> Path:
-    return _app_data_dir() / "automail.db"
+    return _app_data_dir() / "mailbahn.db"
 
 
 def _connect() -> sqlite3.Connection:

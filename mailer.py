@@ -1,4 +1,4 @@
-"""Auto-Mail — email sending engine."""
+"""MailBahn — email sending engine."""
 
 import smtplib
 import time

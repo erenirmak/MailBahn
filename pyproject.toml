@@ -1,5 +1,5 @@
 [project]
-name = "auto-mail"
+name = "MailBahn"
 version = "1.0.0"
 description = "Desktop app for sending personalized HTML emails to multiple recipients"
 readme = "README.md"
