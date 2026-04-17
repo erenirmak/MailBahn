@@ -35,7 +35,7 @@ Bob,bob@example.com
 ## Build standalone .exe
 
 ```
-uv run pyinstaller --onefile --name auto-mail main.py
+uv run pyinstaller --onefile --noconsole --name auto-mail main.py
 ```
 
 The script connects via SMTP (TLS on port 587), sends one email per recipient with a 2-second delay between sends, and prints the status of each delivery.
