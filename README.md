@@ -1,6 +1,6 @@
 # MailBahn
 
-Auto-Mail is a desktop application designed for sending personalized HTML emails with attachments to multiple recipients. It provides a user-friendly interface for managing email templates, recipients, and SMTP settings.
+MailBahn is a desktop application designed for sending personalized HTML emails with attachments to multiple recipients. It provides a user-friendly interface for managing email templates, recipients, and SMTP settings.
 
 ## Features
 
