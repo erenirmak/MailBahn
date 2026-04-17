@@ -118,10 +118,6 @@ Install development dependencies:
 pip install pyinstaller>=6.19.0
 ```
 
-### Running Tests
-
-Use the provided test files in `test_files/` to validate the application's functionality.
-
 ## License
 
 This project is licensed under the MIT License.
