@@ -107,8 +107,6 @@ The executable will be created in the `dist` folder.
 - **`mailer.py`**: Handles email composition and sending.
 - **`db.py`**: Manages SQLite database for settings and templates.
 - **`csvutils.py`**: Utilities for loading and validating CSV files.
-- **`templates/`**: Contains reusable HTML email templates.
-- **`test_files/`**: Example CSV files for testing.
 
 ## Development
 
