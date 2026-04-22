@@ -8,6 +8,7 @@ from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email import encoders
 from pathlib import Path
+import random
 
 
 def decode_bytes(raw: bytes) -> str:
@@ -154,7 +155,8 @@ def send_emails(
                 on_progress(i + 1, total, status)
 
             if i < total - 1:
-                time.sleep(delay)
+                delay_time = random.uniform(delay, delay * 4)
+                time.sleep(delay_time)
 
     if on_progress:
         on_progress(total, total, "All emails processed.")
