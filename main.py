@@ -548,9 +548,9 @@ input::placeholder { color: var(--muted); }
                 <div class="hint">Where your .html email templates are stored</div>
             </div>
             <div class="field">
-                <label>Email Delay</label>
+                <label>Min Email Delay</label>
                 <input type="text" id="cfgDelay" placeholder="2" style="width:80px;">
-                <div class="hint">Seconds to wait between sending each email (helps avoid rate limiting)</div>
+                <div class="hint">Minimum seconds to wait between sending each email (helps avoid rate limiting)</div>
             </div>
         </div>
         <!-- Tab: About -->
