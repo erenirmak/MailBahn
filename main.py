@@ -557,7 +557,7 @@ input::placeholder { color: var(--muted); }
         <div class="tab-panel" id="tab-about">
             <div class="info-row">
                 <span class="info-label">App</span>
-                <span class="info-value">MailBahn v1.0</span>
+                <span class="info-value">MailBahn v1.1</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Data Location</span>

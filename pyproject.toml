@@ -1,6 +1,6 @@
 [project]
 name = "MailBahn"
-version = "1.0.0"
+version = "1.1.0"
 description = "Desktop app for sending personalized HTML emails to multiple recipients"
 readme = "README.md"
 requires-python = ">=3.13"
