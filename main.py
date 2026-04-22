@@ -607,6 +607,17 @@ input::placeholder { color: var(--muted); }
     </div>
 </div>
 
+<!-- Alert Modal -->
+<div class="modal-bg" id="alertModal" style="z-index: 999;">
+    <div class="modal" style="width: 380px;">
+        <div class="modal-header"><span style="color: var(--err);">&#9888;</span>&nbsp;<span id="alertTitle" style="font-size: 16px;">Alert</span></div>
+        <div style="padding: 16px 20px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; color: var(--text);" id="alertMsg"></div>
+        <div class="modal-footer">
+            <button class="btn btn-green" onclick="closeAlert()">OK</button>
+        </div>
+    </div>
+</div>
+
 <!-- Recipients -->
 <div class="sec">
     <div class="sec-title">Recipients</div>
@@ -774,7 +785,7 @@ async function saveSettings() {
         EMAIL_DELAY: $('cfgDelay').value.trim() || '2',
     };
     if (!settings.SMTP_SERVER || !settings.SENDER_EMAIL || !settings.SENDER_PASSWORD) {
-        alert('Server, email, and password are required.');
+        showAlert('Server, email, and password are required.', 'Settings Error');
         return;
     }
     const r = await pywebview.api.save_settings(settings);
@@ -784,7 +795,7 @@ async function saveSettings() {
         await refreshTemplates();
         addLog('[OK] Settings saved.');
     } else {
-        alert('Failed to save: ' + (r.error || 'Unknown error'));
+        showAlert('Failed to save: ' + (r.error || 'Unknown error'), 'Settings Error');
     }
 }
 function applySettings(s) {
@@ -860,6 +871,7 @@ async function confirmCsv() {
     }
     const r = await pywebview.api.confirm_csv(_csvPath, nameCol, emailCol);
     if (!r.ok) {
+        showAlert(r.error, "CSV Data Error");
         $('csvDupeWarn').innerHTML = '<div class="csv-warn">' + r.error + '</div>';
         return;
     }
@@ -929,6 +941,7 @@ async function confirmCc() {
     }
     const r = await pywebview.api.confirm_cc(_ccPath, emailCol);
     if (!r.ok) {
+        showAlert(r.error, "CSV Data Error");
         $('ccDupeWarn').innerHTML = '<div class="csv-warn">' + r.error + '</div>';
         return;
     }
@@ -1067,6 +1080,15 @@ async function deleteTemplate() {
 }
 
 /* ── Helpers ──────────────────────────────────────────────── */
+function showAlert(msg, title) {
+    $('alertTitle').textContent = title || 'Alert';
+    $('alertMsg').textContent = msg;
+    $('alertModal').classList.add('open');
+}
+
+function closeAlert() {
+    $('alertModal').classList.remove('open');
+}
 function setStatus(id, text, type) {
     const el = $(id);
     el.textContent = text;

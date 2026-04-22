@@ -3,12 +3,45 @@
 import os
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
 import keyring
 
 _KEYRING_SERVICE = "mailbahn"
 
+# ── Secure credential storage (OS keyring) ────────────────────────
+def save_password(email: str, password: str) -> None:
+    def worker():
+        try:
+            keyring.set_password(_KEYRING_SERVICE, email, password)
+        except Exception:
+            pass
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout=3.0)
+
+def load_password(email: str) -> str:
+    result = [""]
+    def worker():
+        try:
+            result[0] = keyring.get_password(_KEYRING_SERVICE, email) or ""
+        except Exception:
+            pass
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout=3.0)
+    return result[0]
+
+def delete_password(email: str) -> None:
+    def worker():
+        try:
+            keyring.delete_password(_KEYRING_SERVICE, email)
+        except Exception:
+            pass
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout=3.0)
 
 def _app_data_dir() -> Path:
     """Return the platform-appropriate app data directory, creating it if needed.
@@ -165,20 +198,3 @@ def delete_template_meta(name: str) -> None:
     conn.execute("DELETE FROM template_meta WHERE name = ?", (name,))
     conn.commit()
     conn.close()
-
-
-# ── Secure credential storage (OS keyring) ────────────────────────
-
-def save_password(email: str, password: str) -> None:
-    keyring.set_password(_KEYRING_SERVICE, email, password)
-
-
-def load_password(email: str) -> str:
-    return keyring.get_password(_KEYRING_SERVICE, email) or ""
-
-
-def delete_password(email: str) -> None:
-    try:
-        keyring.delete_password(_KEYRING_SERVICE, email)
-    except keyring.errors.PasswordDeleteError:
-        pass
